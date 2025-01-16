@@ -112,7 +112,7 @@ android {
 
     buildTypes {
         debug {
-            jniDebuggable true
+            jniDebuggable false
             minifyEnabled false
             shrinkResources false
             multiDexEnabled true

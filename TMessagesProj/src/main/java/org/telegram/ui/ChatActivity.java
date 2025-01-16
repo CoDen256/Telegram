@@ -125,6 +125,7 @@ import androidx.viewpager.widget.PagerAdapter;
 import androidx.viewpager.widget.ViewPager;
 
 import com.google.android.exoplayer2.ui.AspectRatioFrameLayout;
+import com.google.android.exoplayer2.util.Log;
 import com.google.zxing.common.detector.MathUtils;
 
 import org.telegram.PhoneFormat.PhoneFormat;
@@ -2411,7 +2412,19 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
                 }
             }
             dialog_id = -chatId;
+
+            boolean normal = !ChatObject.isPublic(currentChat) || ChatObject.isMegagroup(currentChat);
+            Log.w("NO-CHANNEL", "channel:"+ChatObject.getPublicUsername(currentChat));
+            Log.w("NO-CHANNEL", "isChannel?"+ChatObject.isChannel(currentChat));
+            Log.w("NO-CHANNEL", "canPost?"+ChatObject.canPost(currentChat));
+            Log.w("NO-CHANNEL", "isChannelOrGiga?"+ChatObject.isChannelOrGiga(currentChat));
+            Log.w("NO-CHANNEL", "isMega?"+ChatObject.isMegagroup(currentChat));
+            Log.w("NO-CHANNEL", "isPublic?"+ChatObject.isPublic(currentChat));
             if (ChatObject.isChannel(currentChat)) {
+                Log.w("NO-CHANNEL", "normal/private/mega?"+normal);
+                if (!normal) {
+                    return false;
+                }
                 if (ChatObject.isNotInChat(currentChat) && !isThreadChat() && !isInScheduleMode()) {
                     waitingForGetDifference = true;
                     getMessagesController().startShortPoll(currentChat, classGuid, false, isGettingDifference -> {

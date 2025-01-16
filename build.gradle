@@ -4,6 +4,11 @@ buildscript {
         mavenCentral()
         google()
         maven { url 'https://developer.huawei.com/repo/' }
+        mavenLocal()
+        maven {
+            name "jcenter"
+            url "https://jcenter.bintray.com/"
+        }
     }
     dependencies {
         classpath 'com.android.tools.build:gradle:8.4.2'
