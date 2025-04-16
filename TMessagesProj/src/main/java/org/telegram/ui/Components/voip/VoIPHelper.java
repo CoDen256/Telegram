@@ -40,6 +40,8 @@ import org.telegram.messenger.voip.Instance;
 import org.telegram.messenger.voip.VoIPService;
 import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.tgnet.TLRPC;
+import org.telegram.tgnet.tl.TL_phone;
+import org.telegram.ui.AccountFrozenAlert;
 import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.Theme;
@@ -69,6 +71,10 @@ public class VoIPHelper {
 	private static final int VOIP_SUPPORT_ID = 4244000;
 
 	public static void startCall(TLRPC.User user, boolean videoCall, boolean canVideoCall, final Activity activity, TLRPC.UserFull userFull, AccountInstance accountInstance) {
+		if (accountInstance == null ? MessagesController.getInstance(UserConfig.selectedAccount).isFrozen() : accountInstance.getMessagesController().isFrozen()) {
+			AccountFrozenAlert.show(accountInstance == null ? UserConfig.selectedAccount : accountInstance.getCurrentAccount());
+			return;
+		}
 		if (userFull != null && userFull.phone_calls_private) {
 			new AlertDialog.Builder(activity)
 					.setTitle(LocaleController.getString(R.string.VoipFailed))
@@ -383,7 +389,7 @@ public class VoIPHelper {
 
 	public static void sendCallRating(final long callID, final long accessHash, final int account, int rating) {
 		final int currentAccount = UserConfig.selectedAccount;
-		final TLRPC.TL_phone_setCallRating req = new TLRPC.TL_phone_setCallRating();
+		final TL_phone.setCallRating req = new TL_phone.setCallRating();
 		req.rating = rating;
 		req.comment = "";
 		req.peer = new TLRPC.TL_inputPhoneCall();
@@ -565,7 +571,7 @@ public class VoIPHelper {
 			int rating = bar.getRating();
 			if (rating >= 4 || page[0] == 1) {
 				final int currentAccount = UserConfig.selectedAccount;
-				final TLRPC.TL_phone_setCallRating req = new TLRPC.TL_phone_setCallRating();
+				final TL_phone.setCallRating req = new TL_phone.setCallRating();
 				req.rating = bar.getRating();
 				ArrayList<String> problemTags = new ArrayList<>();
 				for (int i = 0; i < problemsWrap.getChildCount(); i++) {

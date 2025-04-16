@@ -9,6 +9,7 @@
 package org.telegram.ui.Cells;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
+import static org.telegram.messenger.LocaleController.getString;
 
 import android.content.Context;
 import android.graphics.Canvas;
@@ -19,6 +20,9 @@ import android.graphics.PorterDuffColorFilter;
 import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
 import android.text.Layout;
+import android.text.SpannableString;
+import android.text.SpannableStringBuilder;
+import android.text.Spanned;
 import android.text.StaticLayout;
 import android.text.TextPaint;
 import android.text.TextUtils;
@@ -44,6 +48,7 @@ import org.telegram.messenger.UserObject;
 import org.telegram.messenger.Utilities;
 import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.tgnet.TLRPC;
+import org.telegram.tgnet.tl.TL_account;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.AnimatedEmojiDrawable;
 import org.telegram.ui.Components.AnimatedFloat;
@@ -51,6 +56,7 @@ import org.telegram.ui.Components.AvatarDrawable;
 import org.telegram.ui.Components.ButtonBounce;
 import org.telegram.ui.Components.CanvasButton;
 import org.telegram.ui.Components.CheckBox2;
+import org.telegram.ui.Components.ColoredImageSpan;
 import org.telegram.ui.Components.CombinedDrawable;
 import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Components.Premium.PremiumGradient;
@@ -68,6 +74,7 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
     private AvatarDrawable avatarDrawable;
     private CharSequence subLabel;
     private Theme.ResourcesProvider resourcesProvider;
+    private TLRPC.TL_sponsoredPeer ad;
 
     private TLRPC.User user;
     private TLRPC.Chat chat;
@@ -111,15 +118,23 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
     private boolean drawCheck;
     private boolean drawPremium;
 
-    private final AnimatedFloat premiumBlockedT = new AnimatedFloat(this, 0, 350, CubicBezierInterpolator.EASE_OUT_QUINT);
     private boolean showPremiumBlocked;
+    private final AnimatedFloat premiumBlockedT = new AnimatedFloat(this, 0, 350, CubicBezierInterpolator.EASE_OUT_QUINT);
     private boolean premiumBlocked;
+    private final AnimatedFloat starsBlockedT = new AnimatedFloat(this, 0, 350, CubicBezierInterpolator.EASE_OUT_QUINT);
+    private long starsPriceBlocked;
     private boolean openBot;
 
     private int statusLeft;
     private StaticLayout statusLayout;
+    private AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable botVerificationDrawable;
     private AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable statusDrawable;
     public StoriesUtilities.AvatarStoryParams avatarStoryParams = new StoriesUtilities.AvatarStoryParams(false);
+
+    private final RectF adBounds = new RectF();
+    private Text adText;
+    private Paint adBackgroundPaint;
+    private final ButtonBounce adBounce = new ButtonBounce(this);
 
     private RectF rect = new RectF();
 
@@ -143,6 +158,9 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
         checkBox.setDrawBackgroundAsArc(3);
         addView(checkBox);
 
+        botVerificationDrawable = new AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable(this, dp(20));
+        botVerificationDrawable.setCallback(this);
+
         statusDrawable = new AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable(this, dp(20));
         statusDrawable.setCallback(this);
     }
@@ -153,6 +171,11 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
         allowBotOpenButton = allow;
         onOpenButtonClick = onOpenClick;
         return this;
+    }
+
+    private Utilities.Callback2<ProfileSearchCell, TLRPC.TL_sponsoredPeer> onSponsoredOptionsClick;
+    public void setOnSponsoredOptionsClick(Utilities.Callback2<ProfileSearchCell, TLRPC.TL_sponsoredPeer> onOptionsClick) {
+        this.onSponsoredOptionsClick = onOptionsClick;
     }
 
     public ProfileSearchCell showPremiumBlock(boolean show) {
@@ -169,7 +192,11 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
 
     @Override
     protected boolean verifyDrawable(@NonNull Drawable who) {
-        return statusDrawable == who || super.verifyDrawable(who);
+        return statusDrawable == who || botVerificationDrawable == who || super.verifyDrawable(who);
+    }
+
+    public void setAd(TLRPC.TL_sponsoredPeer sponsoredPeer) {
+        ad = sponsoredPeer;
     }
 
     public void setData(Object object, TLRPC.EncryptedChat ec, CharSequence n, CharSequence s, boolean needCount, boolean saved) {
@@ -178,19 +205,25 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
             user = (TLRPC.User) object;
             chat = null;
             contact = null;
-            premiumBlocked = showPremiumBlocked && user != null && MessagesController.getInstance(currentAccount).isUserPremiumBlocked(user.id);
+            final TL_account.RequirementToContact r = showPremiumBlocked && user != null ? MessagesController.getInstance(currentAccount).isUserContactBlocked(user.id) : null;
+            premiumBlocked = DialogObject.isPremiumBlocked(r);
+            starsPriceBlocked = DialogObject.getMessagesStarsPrice(r);
             setOpenBotButton(allowBotOpenButton && user.bot_has_main_app);
         } else if (object instanceof TLRPC.Chat) {
             chat = (TLRPC.Chat) object;
             user = null;
             contact = null;
-            premiumBlocked = false;
+            final TL_account.RequirementToContact r = ChatObject.getRequirementToContact(chat);
+            premiumBlocked = DialogObject.isPremiumBlocked(r);
+            starsPriceBlocked = DialogObject.getMessagesStarsPrice(r);
             setOpenBotButton(false);
         } else if (object instanceof ContactsController.Contact) {
             contact = (ContactsController.Contact) object;
             chat = null;
             user = null;
-            premiumBlocked = showPremiumBlocked && contact != null && contact.user != null && MessagesController.getInstance(currentAccount).isUserPremiumBlocked(contact.user.id);
+            final TL_account.RequirementToContact r = showPremiumBlocked && contact != null && contact.user != null ? MessagesController.getInstance(currentAccount).isUserContactBlocked(contact.user.id) : null;
+            premiumBlocked = DialogObject.isPremiumBlocked(r);
+            starsPriceBlocked = DialogObject.getMessagesStarsPrice(r);
             setOpenBotButton(false);
         } else {
             setOpenBotButton(false);
@@ -209,9 +242,9 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
     public void setOpenBotButton(boolean show) {
         if (openBot == show) return;
         if (openButtonText == null) {
-            openButtonText = new Text(LocaleController.getString(R.string.BotOpen), 14, AndroidUtilities.bold());
+            openButtonText = new Text(getString(R.string.BotOpen), 14, AndroidUtilities.bold());
         }
-        int buttonWidth = show ? dp(14 + 14) + (int) openButtonText.getCurrentWidth() + dp(15 + 15) : 0;
+        final int buttonWidth = show ? (int) openButtonText.getCurrentWidth() + dp(15 + 15) : 0;
         setPadding(LocaleController.isRTL ? buttonWidth : 0, 0, LocaleController.isRTL ? 0 : buttonWidth, 0);
         openBot = show;
         openButtonBounce.setPressed(false);
@@ -227,16 +260,16 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
             delta -= ConnectionsManager.getInstance(currentAccount).getCurrentTime();
             if (delta <= 0) {
                 if (custom) {
-                    text = LocaleController.getString(R.string.NotificationsCustom);
+                    text = getString(R.string.NotificationsCustom);
                 } else {
-                    text = LocaleController.getString(R.string.NotificationsUnmuted);
+                    text = getString(R.string.NotificationsUnmuted);
                 }
             } else if (delta < 60 * 60) {
-                text = LocaleController.formatString("WillUnmuteIn", R.string.WillUnmuteIn, LocaleController.formatPluralString("Minutes", delta / 60));
+                text = LocaleController.formatString(R.string.WillUnmuteIn, LocaleController.formatPluralString("Minutes", delta / 60));
             } else if (delta < 60 * 60 * 24) {
-                text = LocaleController.formatString("WillUnmuteIn", R.string.WillUnmuteIn, LocaleController.formatPluralString("Hours", (int) Math.ceil(delta / 60.0f / 60)));
+                text = LocaleController.formatString(R.string.WillUnmuteIn, LocaleController.formatPluralString("Hours", (int) Math.ceil(delta / 60.0f / 60)));
             } else if (delta < 60 * 60 * 24 * 365) {
-                text = LocaleController.formatString("WillUnmuteIn", R.string.WillUnmuteIn, LocaleController.formatPluralString("Days", (int) Math.ceil(delta / 60.0f / 60 / 24)));
+                text = LocaleController.formatString(R.string.WillUnmuteIn, LocaleController.formatPluralString("Days", (int) Math.ceil(delta / 60.0f / 60 / 24)));
             } else {
                 text = null;
             }
@@ -251,13 +284,13 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
                 enabled = false;
             }
             if (enabled && custom) {
-                text = LocaleController.getString(R.string.NotificationsCustom);
+                text = getString(R.string.NotificationsCustom);
             } else {
-                text = enabled ? LocaleController.getString(R.string.NotificationsUnmuted) : LocaleController.getString(R.string.NotificationsMuted);
+                text = enabled ? getString(R.string.NotificationsUnmuted) : getString(R.string.NotificationsMuted);
             }
         }
         if (text == null) {
-            text = LocaleController.getString(R.string.NotificationsOff);
+            text = getString(R.string.NotificationsOff);
         }
 
         if (DialogObject.isEncryptedDialog(exception.did)) {
@@ -290,6 +323,7 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
             NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.userIsPremiumBlockedUpadted);
         }
         statusDrawable.detach();
+        botVerificationDrawable.detach();
     }
 
     @Override
@@ -301,6 +335,7 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
             NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.userIsPremiumBlockedUpadted);
         }
         statusDrawable.attach();
+        botVerificationDrawable.attach();
     }
 
     @Override
@@ -308,9 +343,17 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
         if (id == NotificationCenter.emojiLoaded) {
             invalidate();
         } else if (id == NotificationCenter.userIsPremiumBlockedUpadted) {
-            final boolean wasPremiumBlocked = premiumBlocked;
-            premiumBlocked = showPremiumBlocked && (user != null && MessagesController.getInstance(currentAccount).isUserPremiumBlocked(user.id) || contact != null && contact.user != null && MessagesController.getInstance(currentAccount).isUserPremiumBlocked(contact.user.id));
-            if (premiumBlocked != wasPremiumBlocked) {
+            final TL_account.RequirementToContact r;
+            if (user != null) {
+                r = showPremiumBlocked ? MessagesController.getInstance(currentAccount).isUserContactBlocked(user.id) : null;
+            } else if (chat != null) {
+                r = ChatObject.getRequirementToContact(chat);
+            } else if (contact != null) {
+                r = showPremiumBlocked && contact.user != null ? MessagesController.getInstance(currentAccount).isUserContactBlocked(contact.user.id) : null;
+            } else return;
+            if (premiumBlocked != DialogObject.isPremiumBlocked(r) || starsPriceBlocked != DialogObject.getMessagesStarsPrice(r)) {
+                premiumBlocked = DialogObject.isPremiumBlocked(r);
+                starsPriceBlocked = DialogObject.getMessagesStarsPrice(r);
                 invalidate();
             }
         }
@@ -417,14 +460,29 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
             statusLeft = dp(11);
         }
 
+        if (ad != null) {
+            if (adText == null) {
+                final SpannableStringBuilder sb = new SpannableStringBuilder(getString(R.string.SearchAd)).append(" i");
+                final ColoredImageSpan span = new ColoredImageSpan(R.drawable.ic_ab_other);
+                span.setScale(.55f, .55f);
+                span.spaceScaleX = .7f;
+                span.translate(-dp(2), 0);
+                sb.setSpan(span, sb.length() - 1, sb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                adText = new Text(sb, 12);
+            }
+            if (adBackgroundPaint == null) {
+                adBackgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+            }
+        }
+
         if (currentName != null) {
             nameString = currentName;
         } else {
             String nameString2 = "";
             if (chat != null) {
-                nameString2 = AndroidUtilities.removeDiacritics(chat.title);
+                nameString2 = AndroidUtilities.removeRTL(AndroidUtilities.removeDiacritics(chat.title));
             } else if (user != null) {
-                nameString2 = AndroidUtilities.removeDiacritics(UserObject.getUserName(user));
+                nameString2 = AndroidUtilities.removeRTL(AndroidUtilities.removeDiacritics(UserObject.getUserName(user)));
             }
             nameString = nameString2.replace('\n', ' ');
         }
@@ -432,7 +490,7 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
             if (user != null && user.phone != null && user.phone.length() != 0) {
                 nameString = PhoneFormat.getInstance().format("+" + user.phone);
             } else {
-                nameString = LocaleController.getString(R.string.HiddenName);
+                nameString = getString(R.string.HiddenName);
             }
         }
         if (customPaints) {
@@ -462,10 +520,17 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
         if (drawNameLock) {
             nameWidth -= dp(6) + Theme.dialogs_lockDrawable.getIntrinsicWidth();
         }
+        if (ad != null) {
+            final int adWidth = (int) adText.getCurrentWidth() + dp(12.66f + 8);
+            nameWidth -= adWidth;
+            if (LocaleController.isRTL) {
+                nameLeft += adWidth;
+            }
+        }
         if (contact != null) {
-            int w = (int) (Theme.dialogs_countTextPaint.measureText(LocaleController.getString(R.string.Invite)) + 1);
+            int w = (int) (Theme.dialogs_countTextPaint.measureText(getString(R.string.Invite)) + 1);
 
-            actionLayout = new StaticLayout(LocaleController.getString(R.string.Invite), Theme.dialogs_countTextPaint, w, Layout.Alignment.ALIGN_NORMAL, 1.0f, 0.0f, false);
+            actionLayout = new StaticLayout(getString(R.string.Invite), Theme.dialogs_countTextPaint, w, Layout.Alignment.ALIGN_NORMAL, 1.0f, 0.0f, false);
             if (!LocaleController.isRTL) {
                 actionLeft = getMeasuredWidth() - w - dp(19) - dp(16);
             } else {
@@ -506,12 +571,27 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
             countLayout = null;
         }
 
+        if (!botVerificationDrawable.isEmpty()) {
+            if (LocaleController.isRTL) {
+                nameWidth -= botVerificationDrawable.getIntrinsicWidth();
+            } else {
+                nameLeft += botVerificationDrawable.getIntrinsicWidth();
+            }
+        }
+        if (!statusDrawable.isEmpty()) {
+            if (LocaleController.isRTL) {
+                nameLeft += statusDrawable.getIntrinsicWidth();
+            } else {
+                nameWidth -= statusDrawable.getIntrinsicWidth();
+            }
+        }
+
         if (nameWidth < 0) {
             nameWidth = 0;
         }
         CharSequence nameStringFinal = TextUtils.ellipsize(nameString, currentNamePaint, nameWidth - dp(12), TextUtils.TruncateAt.END);
         if (nameStringFinal != null) {
-            nameStringFinal = Emoji.replaceEmoji(nameStringFinal, currentNamePaint.getFontMetricsInt(), dp(20), false);
+            nameStringFinal = Emoji.replaceEmoji(nameStringFinal, currentNamePaint.getFontMetricsInt(), false);
         }
         nameLayout = new StaticLayout(nameStringFinal, currentNamePaint, nameWidth, Layout.Alignment.ALIGN_NORMAL, 1.0f, 0.0f, false);
 
@@ -522,15 +602,15 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
                 statusString = subLabel;
             } else if (user != null) {
                 if (MessagesController.isSupportUser(user)) {
-                    statusString = LocaleController.getString(R.string.SupportStatus);
+                    statusString = getString(R.string.SupportStatus);
                 } else if (user.bot && user.bot_active_users != 0) {
                     statusString = LocaleController.formatPluralStringSpaced("BotUsersShort", user.bot_active_users);
                 } else if (user.bot) {
-                    statusString = LocaleController.getString(R.string.Bot);
+                    statusString = getString(R.string.Bot);
                 } else if (user.id == UserObject.VERIFY) {
-                    statusString = LocaleController.getString(R.string.VerifyCodesNotifications);
+                    statusString = getString(R.string.VerifyCodesNotifications);
                 } else if (UserObject.isService(user.id)) {
-                    statusString = LocaleController.getString(R.string.ServiceNotifications);
+                    statusString = getString(R.string.ServiceNotifications);
                 } else {
                     if (isOnline == null) {
                         isOnline = new boolean[1];
@@ -542,7 +622,7 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
                     }
                     if (user != null && (user.id == UserConfig.getInstance(currentAccount).getClientUserId() || user.status != null && user.status.expires > ConnectionsManager.getInstance(currentAccount).getCurrentTime())) {
                         currentStatusPaint = Theme.dialogs_onlinePaint;
-                        statusString = LocaleController.getString(R.string.Online);
+                        statusString = getString(R.string.Online);
                     }
                 }
             }
@@ -556,9 +636,9 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
                     statusString = LocaleController.formatPluralStringComma("Subscribers", chat.participants_count);
                 } else {
                     if (!ChatObject.isPublic(chat)) {
-                        statusString = LocaleController.getString(R.string.ChannelPrivate).toLowerCase();
+                        statusString = getString(R.string.ChannelPrivate).toLowerCase();
                     } else {
-                        statusString = LocaleController.getString(R.string.ChannelPublic).toLowerCase();
+                        statusString = getString(R.string.ChannelPublic).toLowerCase();
                     }
                 }
             } else {
@@ -566,11 +646,11 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
                     statusString = LocaleController.formatPluralStringComma("Members", chat.participants_count);
                 } else {
                     if (chat.has_geo) {
-                        statusString = LocaleController.getString(R.string.MegaLocation);
+                        statusString = getString(R.string.MegaLocation);
                     } else if (!ChatObject.isPublic(chat)) {
-                        statusString = LocaleController.getString(R.string.MegaPrivate).toLowerCase();
+                        statusString = getString(R.string.MegaPrivate).toLowerCase();
                     } else {
-                        statusString = LocaleController.getString(R.string.MegaPublic).toLowerCase();
+                        statusString = getString(R.string.MegaPublic).toLowerCase();
                     }
                 }
             }
@@ -672,6 +752,18 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
             statusDrawable.set((Drawable) null, animated);
             statusDrawable.setColor(Theme.getColor(Theme.key_chats_verifiedBackground, resourcesProvider));
         }
+        long botVerificationIcon = 0;
+        if (user != null) {
+            botVerificationIcon = DialogObject.getBotVerificationIcon(user);
+        } else if (chat != null) {
+            botVerificationIcon = DialogObject.getBotVerificationIcon(chat);
+        }
+        if (botVerificationIcon == 0 || savedMessages) {
+            botVerificationDrawable.set((Drawable) null, animated);
+        } else {
+            botVerificationDrawable.set(botVerificationIcon, animated);
+        }
+        botVerificationDrawable.setColor(Theme.getColor(Theme.key_chats_verifiedBackground, resourcesProvider));
     }
 
     private boolean rectangularAvatar;
@@ -811,12 +903,25 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
         }
 
         if (nameLayout != null) {
+            int x;
+            if (LocaleController.isRTL) {
+                x = (int) (nameLeft + nameLayout.getLineRight(0) + dp(6));
+            } else {
+                if (nameLayout.getLineLeft(0) == 0) {
+                    x = nameLeft - dp(3) - botVerificationDrawable.getIntrinsicWidth();
+                } else {
+                    float w = nameLayout.getLineWidth(0);
+                    x = (int) (nameLeft + nameWidth - Math.ceil(w) - dp(3) - botVerificationDrawable.getIntrinsicWidth());
+                }
+            }
+            setDrawableBounds(botVerificationDrawable, x, nameTop + (nameLayout.getHeight() - botVerificationDrawable.getIntrinsicHeight()) / 2f);
+            botVerificationDrawable.draw(canvas);
+
             canvas.save();
             canvas.translate(nameLeft, nameTop);
             nameLayout.draw(canvas);
             canvas.restore();
 
-            int x;
             if (LocaleController.isRTL) {
                 if (nameLayout.getLineLeft(0) == 0) {
                     x = nameLeft - dp(3) - statusDrawable.getIntrinsicWidth();
@@ -831,6 +936,31 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
             statusDrawable.draw(canvas);
         }
 
+        if (ad != null && adText != null && adBackgroundPaint != null) {
+            final int color = Theme.getColor(Theme.key_featuredStickers_addButton, resourcesProvider);
+            adBackgroundPaint.setColor(Theme.multAlpha(color, .10f));
+            final int w = (int) adText.getWidth() + dp(12.66f);
+            final int h = dp(17.33f);
+            final int l;
+            if (LocaleController.isRTL) {
+                l = dp(12);
+            } else {
+                l = getWidth() - dp(12) - w;
+            }
+
+            adBounds.set(l, nameTop, l + w, nameTop + h);
+            adBounds.inset(-dp(6), -dp(6));
+
+            canvas.save();
+            final float s = adBounce.getScale(0.1f);
+            canvas.scale(s, s, adBounds.centerX(), adBounds.centerY());
+            canvas.translate(l, nameTop);
+            AndroidUtilities.rectTmp.set(0, 0, w, h);
+            canvas.drawRoundRect(AndroidUtilities.rectTmp, h / 2f, h / 2f, adBackgroundPaint);
+            adText.draw(canvas, dp(6.33f), h / 2.f, color, 1.0f);
+            canvas.restore();
+        }
+
         if (statusLayout != null) {
             canvas.save();
             canvas.translate(statusLeft + sublabelOffsetX, dp(33) + sublabelOffsetY);
@@ -839,7 +969,7 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
         }
 
         if (countLayout != null) {
-            int x = countLeft - dp(5.5f);
+            final int x = countLeft - dp(5.5f);
             rect.set(x, countTop, x + countWidth + dp(11), countTop + dp(23));
             canvas.drawRoundRect(rect, 11.5f * AndroidUtilities.density, 11.5f * AndroidUtilities.density, MessagesController.getInstance(currentAccount).isDialogMuted(dialog_id, 0) ? Theme.dialogs_countGrayPaint : Theme.dialogs_countPaint);
             canvas.save();
@@ -873,8 +1003,8 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
 
         final float lockT = premiumBlockedT.set(premiumBlocked);
         if (lockT > 0) {
-            float top = avatarImage.getCenterY() + dp(14);
-            float left = avatarImage.getCenterX() + dp(16);
+            final float top = avatarImage.getCenterY() + dp(14);
+            final float left = avatarImage.getCenterX() + dp(16);
 
             canvas.save();
             Theme.dialogs_onlineCirclePaint.setColor(Theme.getColor(Theme.key_windowBackgroundWhite, resourcesProvider));
@@ -927,7 +1057,7 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
             builder.append(nameLayout.getText());
         }
         if (drawCheck) {
-            builder.append(", ").append(LocaleController.getString(R.string.AccDescrVerified)).append("\n");
+            builder.append(", ").append(getString(R.string.AccDescrVerified)).append("\n");
         }
         if (statusLayout != null) {
             if (builder.length() > 0) {
@@ -976,6 +1106,22 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
                 return true;
             }
             if (hit || openButtonBounce.isPressed())
+                return true;
+        } else if (ad != null && onSponsoredOptionsClick != null) {
+            final boolean hit = adBounds.contains(event.getX(), event.getY());
+            if (event.getAction() == MotionEvent.ACTION_DOWN || event.getAction() == MotionEvent.ACTION_MOVE) {
+                adBounce.setPressed(hit);
+            } else if (event.getAction() == MotionEvent.ACTION_UP) {
+                if (adBounce.isPressed()) {
+                    onSponsoredOptionsClick.run(this, ad);
+                }
+                adBounce.setPressed(false);
+                return true;
+            } else if (event.getAction() == MotionEvent.ACTION_CANCEL) {
+                adBounce.setPressed(false);
+                return true;
+            }
+            if (hit || adBounce.isPressed())
                 return true;
         }
         if ((user != null || chat != null) && avatarStoryParams.checkOnTouchEvent(event, this)) {

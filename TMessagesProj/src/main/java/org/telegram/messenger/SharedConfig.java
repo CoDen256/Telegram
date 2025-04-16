@@ -670,14 +670,6 @@ public class SharedConfig {
             showNotificationsForAllAccounts = preferences.getBoolean("AllAccounts", true);
 
             configLoaded = true;
-
-            try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT && debugWebView) {
-                    WebView.setWebContentsDebuggingEnabled(true);
-                }
-            } catch (Exception e) {
-                FileLog.e(e);
-            }
         }
     }
 
@@ -804,7 +796,7 @@ public class SharedConfig {
     }
 
     // returns a >= b
-    private static boolean versionBiggerOrEqual(String a, String b) {
+    public static boolean versionBiggerOrEqual(String a, String b) {
         String[] partsA = a.split("\\.");
         String[] partsB = b.split("\\.");
         for (int i = 0; i < Math.min(partsA.length, partsB.length); ++i) {
