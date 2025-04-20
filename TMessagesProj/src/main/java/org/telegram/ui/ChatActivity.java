@@ -14,7 +14,6 @@ import static org.telegram.messenger.LocaleController.formatString;
 import static org.telegram.messenger.LocaleController.getString;
 
 import android.Manifest;
-import android.accounts.Account;
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.AnimatorSet;
@@ -130,7 +129,6 @@ import com.google.android.exoplayer2.ui.AspectRatioFrameLayout;
 import com.google.android.exoplayer2.util.Log;
 import com.google.zxing.common.detector.MathUtils;
 
-import org.checkerframework.checker.units.qual.A;
 import org.telegram.PhoneFormat.PhoneFormat;
 import org.telegram.messenger.AccountInstance;
 import org.telegram.messenger.AndroidUtilities;
@@ -291,6 +289,8 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+
+import io.github.coden256.wpl.guard.GuardClientService;
 
 @SuppressWarnings("unchecked")
 public class ChatActivity extends BaseFragment implements NotificationCenter.NotificationCenterDelegate, DialogsActivity.DialogsActivityDelegate, LocationActivity.LocationActivityDelegate, ChatAttachAlertDocumentLayout.DocumentSelectActivityDelegate, ChatActivityInterface, FloatingDebugProvider, InstantCameraView.Delegate {
@@ -2426,7 +2426,8 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
                 setQuickReplyId(quickReply.id);
             }
         }
-
+        GuardClientService.RulingMatcher matcher = new GuardClientService.RulingMatcher();
+        matcher.init(chatId, userId);
         if (chatId != 0) {
             currentChat = getMessagesController().getChat(chatId);
             if (currentChat == null) {
@@ -2449,18 +2450,7 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
             }
             dialog_id = -chatId;
 
-            boolean normal = !ChatObject.isPublic(currentChat) || ChatObject.isMegagroup(currentChat);
-            Log.w("NO-CHANNEL", "channel:"+ChatObject.getPublicUsername(currentChat));
-            Log.w("NO-CHANNEL", "isChannel?"+ChatObject.isChannel(currentChat));
-            Log.w("NO-CHANNEL", "canPost?"+ChatObject.canPost(currentChat));
-            Log.w("NO-CHANNEL", "isChannelOrGiga?"+ChatObject.isChannelOrGiga(currentChat));
-            Log.w("NO-CHANNEL", "isMega?"+ChatObject.isMegagroup(currentChat));
-            Log.w("NO-CHANNEL", "isPublic?"+ChatObject.isPublic(currentChat));
             if (ChatObject.isChannel(currentChat)) {
-                Log.w("NO-CHANNEL", "normal/private/mega?"+normal);
-                if (!normal) {
-                    return false;
-                }
                 if (ChatObject.isNotInChat(currentChat) && !isThreadChat() && !isInScheduleMode()) {
                     waitingForGetDifference = true;
                     getMessagesController().startShortPoll(currentChat, classGuid, false, isGettingDifference -> {
@@ -2473,6 +2463,7 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
                     getMessagesController().startShortPoll(currentChat, classGuid, false);
                 }
             }
+            if (matcher.shouldBlockChat(currentChat)) return false;
         } else if (userId != 0) {
             currentUser = getMessagesController().getUser(userId);
             if (currentUser == null) {
@@ -2508,6 +2499,7 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
                 QuickRepliesController.getInstance(currentAccount).load();
 //                hasQuickReplies = QuickRepliesController.getInstance(currentAccount).hasReplies();
             }
+            if (matcher.shouldBlockUser(currentUser)) return false;
         } else if (encId != 0) {
             currentEncryptedChat = getMessagesController().getEncryptedChat(encId);
             final MessagesStorage messagesStorage = getMessagesStorage();
