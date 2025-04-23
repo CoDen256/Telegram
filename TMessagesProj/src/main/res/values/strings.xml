@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="AppName">Telegram</string>
-    <string name="AppNameBeta">Telegram Beta</string>
+    <string name="AppNameBeta">Willpowerless Telegram</string>
     <string name="LanguageName">English</string>
     <string name="English">English</string>
     <string name="LanguageNameInEnglish">English</string>
@@ -2572,7 +2572,7 @@
     <string name="QRCodePermissionNoCameraWithHint">**Telegram** needs camera access so that you can scan QR codes. Tap Settings -> Permissions, and turn **Camera** on.</string>
     <string name="SetProfilePhoto">Set Profile Photo</string>
     <string name="AppUpdate">Update Telegram</string>
-    <string name="AppUpdateBeta">Update Telegram Beta</string>
+    <string name="AppUpdateBeta">Update Willpowerless Telegram</string>
     <string name="AppUpdateVersionAndSize">Version %1$s • %2$s</string>
     <string name="AppBetaUpdateVersion">Version %1$s (%2$s)</string>
     <string name="AppUpdateDownloading">Downloading %1$d%%...</string>

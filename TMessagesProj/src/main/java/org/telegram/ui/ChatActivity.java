@@ -2426,7 +2426,7 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
                 setQuickReplyId(quickReply.id);
             }
         }
-        GuardClientService.RulingMatcher matcher = new GuardClientService.RulingMatcher();
+        GuardClientService.RulingMatcher matcher = new GuardClientService.RulingMatcher(getContext());
         matcher.init(chatId, userId);
         if (chatId != 0) {
             currentChat = getMessagesController().getChat(chatId);

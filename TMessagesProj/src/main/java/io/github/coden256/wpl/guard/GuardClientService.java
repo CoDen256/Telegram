@@ -1,10 +1,13 @@
 package io.github.coden256.wpl.guard;
 
 import android.app.Service;
+import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.IBinder;
 import android.util.Log;
+import android.widget.Toast;
+
 import org.telegram.tgnet.TLRPC.User;
 import org.telegram.tgnet.TLRPC.Chat;
 
@@ -79,14 +82,16 @@ public class GuardClientService extends Service {
 
         private final List<Ruling> chatRulings;
         private final List<Ruling> userRulings;
+        private Context context;
 
-        public RulingMatcher(List<Ruling> chatRulings, List<Ruling> userRulings){
+        public RulingMatcher(Context context, List<Ruling> chatRulings, List<Ruling> userRulings){
             this.chatRulings = chatRulings;
             this.userRulings = userRulings;
+            this.context = context;
         }
 
-        public RulingMatcher(){
-            this(RulingSettings.of(GuardClientService.CHAT_RULINGS).getRulings(),
+        public RulingMatcher(Context context){
+            this(context,RulingSettings.of(GuardClientService.CHAT_RULINGS).getRulings(),
                     RulingSettings.of(GuardClientService.USER_RULINGS).getRulings());
         }
 
@@ -101,6 +106,9 @@ public class GuardClientService extends Service {
             String path = asPath(user);
             boolean blocked = isBlocked(path, userRulings);
             Log.w("GuardMatcher", "/users/"+path+(blocked? " blocked":" allowed"));
+            if (blocked){
+                Toast.makeText(context, "/users/"+path +" blocked", Toast.LENGTH_SHORT).show();
+            }
             return blocked;
         }
 
@@ -112,6 +120,10 @@ public class GuardClientService extends Service {
             String path = asPath(chat);
             boolean blocked = isBlocked(path, chatRulings);
             Log.w("GuardMatcher", "/chats/"+path+(blocked? " blocked":" allowed"));
+
+            if (blocked){
+                Toast.makeText(context, "/chats/"+path +" blocked", Toast.LENGTH_SHORT).show();
+            }
             return blocked;
         }
 
