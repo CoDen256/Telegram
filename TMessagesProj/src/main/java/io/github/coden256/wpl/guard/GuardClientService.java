@@ -106,9 +106,6 @@ public class GuardClientService extends Service {
             String path = asPath(user);
             boolean blocked = isBlocked(path, userRulings);
             Log.w("GuardMatcher", "/users/"+path+(blocked? " blocked":" allowed"));
-            if (blocked){
-                Toast.makeText(context, "/users/"+path +" blocked", Toast.LENGTH_SHORT).show();
-            }
             return blocked;
         }
 
@@ -120,10 +117,6 @@ public class GuardClientService extends Service {
             String path = asPath(chat);
             boolean blocked = isBlocked(path, chatRulings);
             Log.w("GuardMatcher", "/chats/"+path+(blocked? " blocked":" allowed"));
-
-            if (blocked){
-                Toast.makeText(context, "/chats/"+path +" blocked", Toast.LENGTH_SHORT).show();
-            }
             return blocked;
         }
 
@@ -154,7 +147,7 @@ public class GuardClientService extends Service {
 
         private boolean isBlocked(String subject, List<Ruling> rulings){
             List<Ruling> matching = rulings.stream().filter(r -> matches(subject, r.path)).collect(Collectors.toList());
-            Log.i("GuardMatcher", "Matches: "+ matching.stream().map(GuardClientService::pretty).toList());
+            Log.i("GuardMatcher", "Matches: "+ matching.stream().map(GuardClientService::pretty).collect(Collectors.toList()));
             if (matching.isEmpty()) return false;
             return matching.stream().noneMatch(r -> r.action.equals("FORCE")) &&
                     matching.stream().anyMatch(r -> r.action.equals("BLOCK"));
@@ -171,7 +164,7 @@ public class GuardClientService extends Service {
         return new GuardClient.Stub() {
             @Override
             public void onRulings(List<Ruling> newRulings) {
-                Log.i(TAG, "Receiving rulings: " + newRulings.stream().map(GuardClientService::pretty).toList());
+                Log.i(TAG, "Receiving rulings: " + newRulings.stream().map(GuardClientService::pretty).collect(Collectors.toList()));
                 updateChatRules(filterSubPath(newRulings, "/chats/"));
                 updateUserRules(filterSubPath(newRulings, "/users/"));
             }
